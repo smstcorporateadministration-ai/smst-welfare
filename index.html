@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SMST Welfare Center</title>
+    <!-- CSS Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- JS Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+
+    <!-- ⚠️ แก้ API_URL เป็น URL /exec ของ Apps Script ที่ Deploy แล้ว -->
+    <script>
+      const API_URL = 'https://script.google.com/macros/s/XXXXXXXX/exec';
+      window.ADMIN_KEY = '';
+
+      // เลียนแบบ google.script.run เดิม เพื่อไม่ต้องแก้โค้ดที่เรียกใช้ทีละจุด
+      function makeRunner() {
+        let ok = function () {};
+        let fail = function (e) { console.error(e); };
+        const runner = new Proxy({}, {
+          get: function (_, name) {
+            if (name === 'withSuccessHandler') return function (fn) { ok = fn; return runner; };
+            if (name === 'withFailureHandler') return function (fn) { fail = fn; return runner; };
+            return function () {
+              const args = Array.prototype.slice.call(arguments);
+              fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ fn: name, args: args, key: window.ADMIN_KEY })
+              })
+              .then(function (r) { return r.json(); })
+              .then(function (j) {
+                if (j.ok) ok(j.data); else fail(new Error(j.error || 'เกิดข้อผิดพลาด'));
+              }, function (e) { fail(e); });
+            };
+          }
+        });
+        return runner;
+      }
+      window.google = { script: { get run() { return makeRunner(); } } };
+    </script>
+    
+    <style>
+      :root {
+        --primary-red: #a11421;       /* สีแดงเข้มแบบ SMST */
+        --primary-red-hover: #83101b; 
+        --surface-bg: #f4f6f9;        /* พื้นหลังสีเทาอ่อน สบายตา */
+        --card-bg: #ffffff;
+        --text-main: #1e293b;
+        --text-muted: #64748b;
+        --border-color: #e2e8f0;
+      }
+      
+      body {
+        background-color: var(--surface-bg);
+        font-family: 'Prompt', sans-serif;
+        color: var(--text-main);
+      }
+
+      /* Navbar - สีแดงคลาสสิก */
+      .navbar-custom { 
+        background-color: var(--primary-red);
+        border-bottom: 2px solid rgba(0,0,0,0.1);
+      }
+      .brand-title { font-size: 1.15rem; font-weight: 700; color: #ffffff; line-height: 1.2; }
+      .brand-subtitle { font-size: 0.75rem; color: rgba(255,255,255,0.7); font-weight: 400; }
+      
+      .nav-btn { 
+        color: rgba(255,255,255,0.8); 
+        background: transparent; 
+        border: none; 
+        padding: 8px 16px; 
+        border-radius: 8px; 
+        font-weight: 400; 
+        font-size: 0.95rem;
+        cursor: pointer; 
+        transition: all 0.2s; 
+        white-space: nowrap; 
+      }
+      .nav-btn:hover { color: #ffffff; background-color: rgba(255,255,255,0.1); }
+      .nav-btn.active { color: #ffffff; background-color: rgba(255,255,255,0.2); font-weight: 600; }
+      
+      /* Base Card */
+      .flat-card { 
+        background: var(--card-bg); 
+        border-radius: 16px; 
+        padding: 24px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
+        margin-bottom: 20px;
+        border: none;
+      }
+      
+      /* Dashboard Hero */
+      .dash-hero {
+        background-color: var(--primary-red);
+        border-radius: 16px;
+        color: white;
+        padding: 32px 40px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(161, 20, 33, 0.2);
+      }
+      
+      /* Stat Cards (กรอบตัวเลข) */
+      .stat-card {
+        background: var(--card-bg); 
+        border-radius: 16px; 
+        padding: 20px 24px; 
+        text-align: left; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04); 
+        height: 100%;
+        border: none;
+      }
+      .stat-card.total { border-bottom: 4px solid #1e293b; }
+      .stat-card.pending { border-bottom: 4px solid #fbbf24; }
+      .stat-card.approved { border-bottom: 4px solid #3b82f6; }
+      .stat-card.wait-return { border-bottom: 4px solid #06b6d4; }
+      .stat-card.success { border-bottom: 4px solid #10b981; }
+
+      .stat-title { font-size: 0.85rem; color: #64748b; font-weight: 600; margin-bottom: 4px; }
+      .stat-value { font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+      .stat-sub { font-size: 0.75rem; color: #94a3b8; }
+      
+      /* Status Bars */
+      .bar-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      .bar-label { font-size: 0.85rem; font-weight: 500; color: var(--text-main); width: 35%; }
+      .bar-track { background-color: #f1f5f9; height: 8px; border-radius: 8px; width: 50%; overflow: hidden; }
+      .bar-fill { height: 100%; border-radius: 8px; }
+      .bar-value { font-size: 0.85rem; font-weight: 600; color: var(--text-main); width: 15%; text-align: right; }
+
+      /* Request Tracking List */
+      .tracking-header {
+        background: var(--card-bg);
+        border-radius: 16px 16px 0 0;
+        padding: 24px 32px;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.02);
+      }
+      .tracking-body {
+        background: #f1f5f9;
+        padding: 20px;
+        border-radius: 0 0 16px 16px;
+      }
+      .tracking-item {
+        background: #ffffff;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .tracking-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+      }
+      
+      /* Badges */
+      .badge-soft-warning { background: #fef3c7; color: #b45309; padding: 4px 10px; border-radius: 6px; font-weight: 500; font-size: 0.8rem; }
+      .badge-soft-success { background: #dcfce7; color: #15803d; padding: 4px 10px; border-radius: 6px; font-weight: 500; font-size: 0.8rem; }
+      .badge-soft-info { background: #e0f2fe; color: #0369a1; padding: 4px 10px; border-radius: 6px; font-weight: 500; font-size: 0.8rem; }
+      .badge-soft-primary { background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 6px; font-weight: 500; font-size: 0.8rem; }
+      .badge-soft-danger { background: #fee2e2; color: #b91c1c; padding: 4px 10px; border-radius: 6px; font-weight: 500; font-size: 0.8rem; }
+      .badge-soft-secondary { background: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 6px; font-weight: 500; font-size: 0.8rem; }
+
+      /* Form Elements */
+      .form-floating > .form-control, .form-floating > .form-select { border-radius: 8px; border: 1px solid #cbd5e1; }
+      .form-floating > .form-control:focus, .form-floating > .form-select:focus { border-color: var(--primary-red); box-shadow: 0 0 0 3px rgba(161, 20, 33, 0.1); }
+      .search-box { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 16px; }
+      .item-selection-box { max-height: 350px; overflow-y: auto; background: var(--card-bg); border: 1px solid #cbd5e1; border-radius: 8px; }
+      .item-row { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; }
+      .item-row:hover { background-color: #f8fafc; }
+      .qty-input { width: 80px; text-align: center; }
+      
+      /* Buttons */
+      .btn-primary { background: var(--primary-red); border: none; font-weight: 500; }
+      .btn-primary:hover { background: var(--primary-red-hover); }
+      
+      /* Tables */
+      .flat-table th { background-color: #f8fafc; color: var(--text-muted); font-weight: 600; border-bottom: 2px solid var(--border-color); }
+      .flat-table td { vertical-align: middle; border-bottom: 1px solid var(--border-color); }
+      
+      /* Tabs */
+      .sub-tab-btn { background: #fff; border: 1px solid #cbd5e1; color: var(--text-muted); font-weight: 500; padding: 6px 16px; border-radius: 20px; transition: all 0.2s; }
+      .sub-tab-btn.active { background: #f8fafc; border-color: #94a3b8; color: var(--text-main); font-weight: 600; }
+
+      .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-bottom: 1.5rem; display: flex; align-items: center; }
+      .section-dash { color: #d4af37; font-weight: bold; margin-right: 8px; font-size: 1.2rem; }
+
+      .rule-item { display: flex; align-items: flex-start; margin-bottom: 1rem; }
+      .rule-icon { font-size: 1.25rem; margin-right: 12px; margin-top: 2px; }
+
+      @media (max-width: 576px) {
+        .dash-hero { padding: 24px; }
+        .tracking-item { flex-direction: column; align-items: flex-start; gap: 12px; }
+        .tracking-item > div:last-child { width: 100%; justify-content: space-between; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top py-2">
+      <div class="container">
+        <div class="d-flex align-items-center">
+          <div class="bg-white rounded-circle me-3 d-flex align-items-center justify-content-center overflow-hidden" style="width: 40px; height: 40px; padding: 2px;">
+            <img src="https://i.postimg.cc/6pcYBGT4/IMG-6847.png" alt="SMST Logo" style="width: 100%; height: 100%; object-fit: contain;">
+          </div>
+          <div>
+            <div class="brand-title">SMST Welfare Center</div>
+            <div class="brand-subtitle">Society of Medical Students of Thailand</div>
+          </div>
+        </div>
+        <button class="navbar-toggler border-0 shadow-none text-white" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <div class="navbar-nav ms-auto gap-2 align-items-lg-center mt-3 mt-lg-0 py-2 py-lg-0">
+            <button class="nav-btn active w-100 text-lg-start" id="nav-dashboard" onclick="showPage('dashboard')">หน้าแรก</button>
+            <button class="nav-btn w-100 text-lg-start" id="nav-stocks" onclick="showPage('stocks')">คลังอุปกรณ์</button>
+            <button class="nav-btn w-100 text-lg-start" id="nav-borrow" onclick="showPage('borrow')">ขอยืมพัสดุ</button>
+            <button class="nav-btn w-100 text-lg-start" id="nav-status" onclick="showPage('status')">ตรวจสอบสถานะ</button>
+            <button class="nav-btn text-warning w-100 text-lg-start ms-lg-2" id="nav-admin" onclick="showPage('admin')"><i class="bi bi-shield-lock-fill"></i> Admin</button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container mt-4 mb-5">
+      
+      <!-- PAGE: Dashboard -->
+      <div id="page-dashboard" class="page-content">
+        
+        <div class="dash-hero mb-4">
+          <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center position-relative" style="z-index: 2;">
+            <div>
+              <span class="badge bg-warning text-dark mb-3 rounded-pill px-3 py-1 shadow-sm"><i class="bi bi-star-fill me-1"></i> SMST36 WELFARE CENTER</span>
+              <h1 class="fw-bold mb-2 text-white">Inventory Dashboard</h1>
+              <p class="mb-0 fw-light fs-6 text-white opacity-75">ระบบบริหารจัดการคลังอุปกรณ์ส่วนกลาง สำหรับทำเรื่องขอยืม-คืน และตรวจสอบสถานะ</p>
+            </div>
+            <div class="mt-4 mt-md-0 d-none d-md-block">
+              <img src="https://i.postimg.cc/6pcYBGT4/IMG-6847.png" alt="Logo" class="rounded-circle shadow-sm" style="width: 90px; height: 90px; object-fit: cover; background-color: white;">
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-6 col-md-4">
+            <div class="stat-card total">
+              <div class="stat-title">คำขอทั้งหมด</div>
+              <div class="stat-value text-dark" id="kpi-total">0</div>
+              <div class="stat-sub">รายการ</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="stat-card pending">
+              <div class="stat-title">รอตรวจสอบ</div>
+              <div class="stat-value text-warning" id="kpi-pending">0</div>
+              <div class="stat-sub">รายการ</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-4">
+            <div class="stat-card approved">
+              <div class="stat-title">อนุมัติ (รอรับของ)</div>
+              <div class="stat-value text-primary" id="kpi-approved">0</div>
+              <div class="stat-sub">รายการ</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-6">
+            <div class="stat-card wait-return">
+              <div class="stat-title">รอการส่งคืน</div>
+              <div class="stat-value text-info" id="kpi-waiting-return">0</div>
+              <div class="stat-sub">รายการ</div>
+            </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="stat-card success">
+              <div class="stat-title">เสร็จสิ้น/คืนสำเร็จ</div>
+              <div class="stat-value text-success" id="kpi-returned">0</div>
+              <div class="stat-sub">รายการ</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flat-card">
+          <div class="section-title"><span class="section-dash">—</span> ภาพรวมสถานะคำขอ</div>
+          <div id="status-bars-container">
+            <div class="text-start py-3 text-muted small">ยังไม่มีข้อมูลคำขอในระบบ</div>
+          </div>
+        </div>
+        
+        <div class="flat-card">
+          <div class="section-title"><span class="section-dash">—</span> ระเบียบการยืม-คืนพัสดุ</div>
+          
+          <div class="rule-item">
+            <div class="rule-icon text-primary"><i class="bi bi-calendar"></i></div>
+            <div>
+              <div class="fw-bold text-dark">ระยะเวลาทำเรื่องขอยืม</div>
+              <div class="small text-muted">กรุณาทำเรื่องล่วงหน้าอย่างน้อย <strong>1 สัปดาห์ (กทม.)</strong> และ <strong>2 สัปดาห์ (ต่างจังหวัด)</strong> ก่อนวันใช้งานจริง</div>
+            </div>
+          </div>
+          
+          <div class="rule-item">
+            <div class="rule-icon text-primary"><i class="bi bi-truck"></i></div>
+            <div>
+              <div class="fw-bold text-dark">การรับ-ส่งพัสดุ</div>
+              <div class="small text-muted">ผู้ยืมต้องมารับพัสดุเองเป็นหลัก กรณีจำเป็นต้องจัดส่ง <strong>โครงการต้องรับผิดชอบค่าจัดส่งเอง</strong> (ส่วนกลางไม่มีงบส่วนนี้ โปรดปรึกษาการเงินโครงการ)</div>
+            </div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-icon text-secondary"><i class="bi bi-clock"></i></div>
+            <div>
+              <div class="fw-bold text-dark">รอบการตรวจสอบ</div>
+              <div class="small text-muted">แอดมินจะตรวจสอบและอนุมัติในเวลา 12:00 น. และ 18:00 น. ของทุกวัน</div>
+            </div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-icon text-success"><i class="bi bi-box-arrow-in-left"></i></div>
+            <div>
+              <div class="fw-bold text-dark">การคืนพัสดุ</div>
+              <div class="small text-muted">พัสดุที่ระบุว่า "ต้องคืน" <strong>ให้ส่งคืนภายใน 7 วันหลังเสร็จสิ้นงาน</strong> พร้อมแนบรูปยืนยันเข้าระบบ</div>
+            </div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-icon text-warning"><i class="bi bi-shield-check"></i></div>
+            <div>
+              <div class="fw-bold text-dark">ติดต่อแอดมิน</div>
+              <div class="small text-muted">มีปัญหาการใช้งาน/ติดตามของ ติดต่อฝ่ายบริหารองค์กร</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- PAGE: Stocks -->
+      <div id="page-stocks" class="page-content d-none">
+        <div class="flat-card mb-4">
+          <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div>
+              <h4 class="fw-bold mb-1 text-dark">คลังอุปกรณ์ส่วนกลาง</h4>
+              <p class="text-muted small mb-2">ตรวจสอบจำนวนคงเหลือและสถานะพัสดุ</p>
+
+              <!-- ปุ่มทางลัดเปิดดู Google Sheets ทั้ง 2 ชีท -->
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                <a href="https://docs.google.com/spreadsheets/d/16FywWkEg2LPsXxcj_1mWQIms3i6HvJlzVTN5pEA4uVs/edit" target="_blank" class="btn btn-sm btn-outline-success rounded-pill px-3 shadow-sm" style="font-size: 0.8rem;">
+                  <i class="bi bi-file-earmark-spreadsheet me-1"></i> ชีทคลังกลาง
+                </a>
+                <a href="https://docs.google.com/spreadsheets/d/1J1emrCvTx7kpu3Gtf3ETl30GGC2F3ovCbiTj2zxCZck/edit" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" style="font-size: 0.8rem;">
+                  <i class="bi bi-file-earmark-spreadsheet me-1"></i> ชีท Merchandise
+                </a>
+              </div>
+            </div>
+            
+            <div class="d-flex flex-wrap gap-2 mt-2 mt-md-0">
+              <button class="sub-tab-btn active" id="btn-cat-material" onclick="switchStockCategory('คลังวัสดุ')">📦 คลังวัสดุ</button>
+              <button class="sub-tab-btn" id="btn-cat-merch" onclick="switchStockCategory('Merchandise')">🛍️ Merchandise</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="flat-card p-0 overflow-hidden">
+          <div class="p-3 border-bottom bg-white">
+             <div class="input-group search-box w-100">
+              <span class="input-group-text bg-transparent border-0"><i class="bi bi-search text-muted"></i></span>
+              <input type="text" class="form-control border-0 shadow-none bg-transparent" id="stockSearchInput" placeholder="ค้นหาด้วยรหัส, ชื่อพัสดุ หรือสถานที่เก็บ..." oninput="filterStocksTable()">
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table flat-table align-middle mb-0">
+              <thead>
+                <tr>
+                  <th class="ps-4">รหัสพัสดุ</th>
+                  <th>ชื่อรายการ</th>
+                  <th>หมวดหมู่ย่อย</th>
+                  <th>สถานที่เก็บ</th>
+                  <th>คงเหลือ</th>
+                  <th class="pe-4">เงื่อนไข</th>
+                </tr>
+              </thead>
+              <tbody id="stocks-tbody">
+                <tr><td colspan="6" class="text-center py-5 text-muted">กำลังโหลดคลังอุปกรณ์...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: Borrow Form -->
+      <div id="page-borrow" class="page-content d-none">
+        <div class="flat-card mx-auto" style="max-width: 800px;">
+          <div class="text-center mb-4 pb-3 border-bottom">
+            <h4 class="fw-bold mb-1 text-dark">แบบฟอร์มขอยืมพัสดุ</h4>
+            <p class="text-muted small">กรอกข้อมูลให้ครบถ้วนเพื่อความรวดเร็วในการพิจารณาอนุมัติ</p>
+          </div>
+          
+          <form id="borrowForm" onsubmit="handleBorrowSubmit(event)">
+            
+            <div class="alert alert-light border small text-dark mb-4">
+              <i class="bi bi-info-circle text-primary me-2"></i><strong>เงื่อนไขการรับพัสดุ:</strong> ผู้ยืมต้องมารับพัสดุด้วยตนเองเป็นหลัก กรณีจำเป็นต้องจัดส่ง <strong>โครงการจะต้องเป็นผู้รับผิดชอบค่าใช้จ่ายในการจัดส่งทั้งหมด</strong>
+            </div>
+
+            <div class="row g-3 mb-4">
+              <div class="col-12 col-md-6">
+                <div class="form-floating">
+                  <input type="text" class="form-control" id="b-name" placeholder="ชื่อ" required onblur="checkNameForSignature()">
+                  <label>ชื่อ-นามสกุล (ผู้ยืม)</label>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="form-floating">
+                  <select class="form-select" id="b-department" required>
+                    <option value="" selected disabled>-- เลือกฝ่ายงาน --</option>
+                    <option value="นายกสหพันธ์">นายกสหพันธ์</option>
+                    <option value="สื่อสารองค์กร">สื่อสารองค์กร</option>
+                    <option value="ส่งเสริมความสัมพันธ์องค์กร">ส่งเสริมความสัมพันธ์องค์กร</option>
+                    <option value="ส่งเสริมคุณธรรมฯ">ส่งเสริมคุณธรรมฯ</option>
+                    <option value="บริหารองค์กร">บริหารองค์กร</option>
+                    <option value="การเงิน">การเงิน</option>
+                    <option value="เลขานุการ">เลขานุการ</option>
+                    <option value="พัฒนาคุณภาพฯ">พัฒนาคุณภาพฯ</option>
+                  </select>
+                  <label>ฝ่าย / หน่วยงาน</label>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="form-floating">
+                  <input type="email" class="form-control" id="b-email" placeholder="อีเมล" required>
+                  <label>อีเมลติดต่อกลับ</label>
+                </div>
+              </div>
+              <div class="col-12 col-md-6">
+                <div class="form-floating">
+                  <input type="date" class="form-control" id="b-date" required>
+                  <label>วันที่ต้องการใช้งานพัสดุ</label>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label fw-bold text-dark small mb-2">เลือกรายการพัสดุที่ต้องการยืม</label>
+              <div class="input-group search-box mb-3">
+                <span class="input-group-text bg-transparent border-0"><i class="bi bi-search text-muted"></i></span>
+                <input type="text" class="form-control border-0 shadow-none bg-transparent" id="borrowSearchInput" placeholder="พิมพ์ค้นหารหัส ชื่อพัสดุ หรือสถานที่เก็บ..." oninput="filterBorrowItems()">
+              </div>
+              <div id="borrow-items-list" class="item-selection-box shadow-sm">
+                <div class="text-center py-5 text-muted">กำลังโหลดรายการพัสดุ...</div>
+              </div>
+            </div>
+
+            <div class="form-floating mb-4">
+              <textarea class="form-control" id="b-notes" placeholder="โครงการ" style="height: 100px;" required></textarea>
+              <label>ระบุชื่องาน / โครงการที่นำไปใช้ (สำคัญ)</label>
+            </div>
+
+            <div class="mb-4">
+               <label class="form-label fw-bold text-dark small mb-2">ลายเซ็นผู้ขอยืม</label>
+              <div class="bg-white shadow-sm" style="border: 1px dashed #cbd5e1; border-radius: 8px; display: inline-block; width: 100%; max-width: 100%; touch-action: none; overflow:hidden;">
+                <canvas id="signatureCanvas" style="width: 100%; height: 180px; cursor: crosshair; touch-action: none;"></canvas>
+              </div>
+              <div class="mt-2 text-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSignature()">ล้างลายเซ็น</button>
+              </div>
+            </div>
+            
+            <div class="text-center mt-4">
+              <button type="submit" class="btn btn-primary px-5 py-2 rounded-pill shadow-sm w-100 w-md-auto" id="btn-submit">ยืนยันส่งคำขอยืมพัสดุ</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- PAGE: Status Tracking -->
+      <div id="page-status" class="page-content d-none">
+        <div class="tracking-header d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-end gap-3">
+          <div>
+            <h4 class="fw-bold mb-1 text-dark">ติดตามสถานะคำขอ</h4>
+            <p class="mb-0 text-muted small">กดที่รายการเพื่อดูรายละเอียด ลายเซ็น หรือแจ้งคืนพัสดุ</p>
+          </div>
+          <div>
+            <span class="badge bg-dark rounded-pill px-3 py-2 fs-6 shadow-sm" id="total-req-badge">0 รายการ</span>
+          </div>
+        </div>
+        
+        <div class="tracking-body" id="request-tracking-list">
+          <div class="text-center py-5 text-muted">
+            กำลังโหลดรายการคำขอ...
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: Admin -->
+      <div id="page-admin" class="page-content d-none">
+        <div id="admin-login-box" class="row justify-content-center">
+          <div class="col-12 col-md-6 col-lg-5">
+            <div class="flat-card text-center py-5">
+              <h4 class="fw-bold mb-2 text-dark">Admin Panel</h4>
+              <p class="text-muted small mb-4">เข้าสู่ระบบจัดการสถานะคำขอ</p>
+              <div class="form-floating mb-3">
+                <input type="password" class="form-control" id="adminPasswordInput" placeholder="รหัสผ่าน">
+                <label>รหัสผ่าน Admin</label>
+              </div>
+              <button class="btn btn-dark w-100 rounded-pill shadow-sm py-2" onclick="checkAdminLogin()">เข้าสู่ระบบ</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="admin-panel-box" class="d-none">
+          <div class="flat-card p-0 overflow-hidden">
+            <div class="p-3 bg-light d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 border-bottom">
+              <h5 class="fw-bold mb-0 text-dark">ระบบจัดการสถานะคำขอ</h5>
+              <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="logoutAdmin()">ออกจากระบบ</button>
+            </div>
+            <div class="table-responsive">
+              <table class="table flat-table align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th class="ps-4">รหัส / ผู้ยืม</th>
+                    <th>รายการพัสดุ</th>
+                    <th>อัปเดตสถานะ</th>
+                    <th class="pe-4 text-end">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-tbody">
+                  <tr><td colspan="4" class="text-center py-5 text-muted">กำลังโหลด...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      let stocksList = [];
+      let currentStockCategory = 'คลังวัสดุ';
+      let allBorrowRecords = [];
+      let signaturePad;
+
+      document.addEventListener("DOMContentLoaded", function() {
+        loadAllData();
+        initSignature();
+      });
+
+      function initSignature() {
+        const canvas = document.getElementById('signatureCanvas');
+        if(!canvas) return;
+        signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgba(255, 255, 255, 0)' });
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+      }
+
+      function resizeCanvas() {
+        const canvas = document.getElementById('signatureCanvas');
+        if(!canvas || !canvas.offsetWidth) return;
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        canvas.getContext("2d").scale(ratio, ratio);
+        if(signaturePad) signaturePad.clear();
+      }
+
+      function clearSignature() {
+        if(signaturePad) signaturePad.clear();
+      }
+
+      function checkNameForSignature() {
+        let nameInput = document.getElementById('b-name').value.trim();
+        if(nameInput === '') return;
+
+        google.script.run.withSuccessHandler(function(oldSig) {
+          if (oldSig) {
+            Swal.fire({
+              title: 'พบประวัติการใช้งาน',
+              text: 'พบชื่อ-นามสกุลนี้ในระบบ ต้องการใช้ลายเซ็นเดิมของคุณหรือไม่?',
+              icon: 'question',
+              showCancelButton: true,
+              confirmButtonText: 'ใช่, ใช้ลายเซ็นเดิม',
+              cancelButtonText: 'ไม่ใช่, ขอเซ็นใหม่',
+              confirmButtonColor: '#a11421',
+              cancelButtonColor: '#64748b'
+            }).then((result) => {
+              if (result.isConfirmed && signaturePad) {
+                let ctx = signaturePad._canvas.getContext('2d');
+                let img = new Image();
+                img.onload = function() {
+                  ctx.clearRect(0, 0, signaturePad._canvas.width, signaturePad._canvas.height);
+                  ctx.drawImage(img, 0, 0, signaturePad._canvas.width, signaturePad._canvas.height);
+                  signaturePad._isEmpty = false;
+                };
+                img.src = oldSig;
+                
+                const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 2000, timerProgressBar: true });
+                Toast.fire({ icon: 'success', title: 'โหลดลายเซ็นเดิมเรียบร้อย' });
+              }
+            });
+          }
+        }).checkExistingSignature(nameInput);
+      }
+
+      function showPage(pageId) {
+        document.querySelectorAll('.page-content').forEach(el => el.classList.add('d-none'));
+        document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
+        
+        const targetPage = document.getElementById('page-' + pageId);
+        const targetNav = document.getElementById('nav-' + pageId);
+        if(targetPage) targetPage.classList.remove('d-none');
+        if(targetNav) targetNav.classList.add('active');
+
+        const navbarToggler = document.querySelector('.navbar-toggler');
+        const navbarCollapse = document.querySelector('.navbar-collapse');
+        if (window.innerWidth < 992 && navbarCollapse.classList.contains('show')) {
+          navbarToggler.click();
+        }
+
+        if(pageId === 'borrow') setTimeout(resizeCanvas, 100);
+      }
+
+      function switchStockCategory(cat) {
+        currentStockCategory = cat;
+        document.getElementById('btn-cat-material').classList.toggle('active', cat === 'คลังวัสดุ');
+        document.getElementById('btn-cat-merch').classList.toggle('active', cat === 'Merchandise');
+        renderStocksTable();
+      }
+
+      function loadAllData() {
+        google.script.run.withSuccessHandler(function(data) {
+          stocksList = data || [];
+          renderStocksTable();
+          renderBorrowFormItems();
+        }).getStocksData();
+
+        google.script.run.withSuccessHandler(renderDashboardAndStatus).getDashboardData();
+      }
+
+      function renderStocksTable() {
+        let tbody = document.getElementById('stocks-tbody');
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        let keyword = document.getElementById('stockSearchInput') ? document.getElementById('stockSearchInput').value.toLowerCase().trim() : '';
+        let filtered = stocksList.filter(row => {
+          let matchesCat = (row[5] === currentStockCategory);
+          let matchesSearch = keyword === '' || row[0].toLowerCase().includes(keyword) || row[1].toLowerCase().includes(keyword) || (row[7] && row[7].toLowerCase().includes(keyword));
+          return matchesCat && matchesSearch;
+        });
+        if(filtered.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">ไม่พบข้อมูลพัสดุ</td></tr>';
+          return;
+        }
+        filtered.forEach(row => {
+          let avail = Number(row[2]) || 0; let isOut = avail < 1;
+          let location = row[7] || 'ม.รังสิต';
+          let locationBadge = (location === 'บ้านแทมมี่') 
+            ? `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">🏠 บ้านแทมมี่</span>` 
+            : `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">🏫 ม.รังสิต</span>`;
+
+          tbody.innerHTML += `
+            <tr>
+              <td class="ps-4"><span class="badge bg-light text-dark border">${row[0]}</span></td>
+              <td class="fw-semibold text-dark">${row[1]}</td>
+              <td><span class="badge bg-light text-secondary border">${row[6]}</span></td>
+              <td>${locationBadge}</td>
+              <td class="${isOut ? 'text-danger fw-bold' : 'text-success fw-bold'}">${isOut ? 'หมด' : avail}</td>
+              <td class="pe-4">${row[4] == 'Yes' ? '<span class="badge-soft-danger">ต้องคืน</span>' : '<span class="badge-soft-secondary">ไม่ต้องคืน</span>'}</td>
+            </tr>
+          `;
+        });
+      }
+
+      function filterStocksTable() { renderStocksTable(); }
+
+      function renderBorrowFormItems(keyword = '') {
+        let formList = document.getElementById('borrow-items-list');
+        if(!formList) return;
+        formList.innerHTML = '';
+        let lowerKey = keyword.toLowerCase().trim();
+        let filtered = stocksList.filter(row => lowerKey === '' || row[0].toLowerCase().includes(lowerKey) || row[1].toLowerCase().includes(lowerKey) || (row[7] && row[7].toLowerCase().includes(lowerKey)));
+
+        if(filtered.length === 0) { formList.innerHTML = '<div class="text-center py-5 text-muted">ไม่พบรายการพัสดุ</div>'; return; }
+
+        filtered.forEach((row) => {
+          let originalIndex = stocksList.indexOf(row);
+          let avail = Number(row[2]) || 0; let isOut = avail < 1; let disabled = isOut ? 'disabled' : '';
+          let availText = isOut ? '<span class="text-danger small fw-bold ms-1">(หมด)</span>' : `<span class="text-success small fw-bold ms-1">(เหลือ ${avail})</span>`;
+          let returnBadge = row[4] == 'Yes' ? '<span class="badge-soft-danger ms-2" style="font-size: 0.7rem; padding: 2px 6px;">ต้องคืน</span>' : '<span class="badge-soft-secondary ms-2" style="font-size: 0.7rem; padding: 2px 6px;">ไม่ต้องคืน</span>';
+          let location = row[7] || 'ม.รังสิต';
+          let locationBadge = (location === 'บ้านแทมมี่') 
+            ? `<span class="badge bg-warning text-dark ms-1" style="font-size: 0.7rem; padding: 2px 6px;">🏠 ${location}</span>`
+            : `<span class="badge bg-info text-dark ms-1" style="font-size: 0.7rem; padding: 2px 6px;">🏫 ${location}</span>`;
+
+          formList.innerHTML += `
+            <div class="item-row d-flex align-items-center flex-wrap flex-sm-nowrap">
+              <input class="form-check-input chk-item mt-0 flex-shrink-0" style="margin-left: 0; margin-right: 12px; cursor: pointer;" type="checkbox" value="${originalIndex}" id="chk-${originalIndex}" ${disabled}>
+              <label class="form-check-label flex-grow-1" for="chk-${originalIndex}" style="cursor: pointer;">
+                <div class="d-flex flex-wrap align-items-center">
+                  <span class="badge bg-light text-dark border me-2 mb-1 mb-sm-0">${row[0]}</span>
+                  <span class="text-dark me-1">${row[1]}</span> 
+                  <small class="text-muted d-none d-sm-inline opacity-75 me-1">[${row[5]}]</small>
+                  ${locationBadge}
+                  ${availText} ${returnBadge}
+                </div>
+              </label>
+              <input type="number" class="form-control form-control-sm qty-input mt-2 mt-sm-0 ms-auto" id="qty-${originalIndex}" min="1" max="${avail}" placeholder="จำนวน" disabled>
+            </div>
+          `;
+        });
+        document.querySelectorAll('.chk-item').forEach(chk => {
+          chk.addEventListener('change', function() {
+            let qtyInput = document.getElementById(`qty-${this.value}`);
+            if(!qtyInput) return;
+            if(this.checked) { qtyInput.disabled = false; qtyInput.value = 1; qtyInput.focus(); }
+            else { qtyInput.disabled = true; qtyInput.value = ''; }
+          });
+        });
+      }
+
+      function filterBorrowItems() { renderBorrowFormItems(document.getElementById('borrowSearchInput').value); }
+
+      function renderDashboardAndStatus(data) {
+        allBorrowRecords = data || [];
+        let total = allBorrowRecords.length;
+        
+        let countPending = 0; let countApproved = 0; let countWaitingReturn = 0; let countReturned = 0;
+        let statusBreakdown = { 'รอตรวจสอบ': 0, 'อนุมัติ (รอรับของ)': 0, 'รอการส่งคืน': 0, 'รอตรวจสอบการคืน': 0, 'เสร็จสิ้น/คืนสำเร็จ': 0, 'ไม่อนุมัติ': 0 };
+
+        allBorrowRecords.forEach(row => { 
+          let st = (row[10] || ''); 
+          if(st.includes('รอตรวจสอบ') && !st.includes('คืน')) { countPending++; statusBreakdown['รอตรวจสอบ']++; }
+          else if(st.includes('อนุมัติ (มารับพัสดุได้เลย)')) { countApproved++; statusBreakdown['อนุมัติ (รอรับของ)']++; }
+          else if(st.includes('รอการส่งคืน')) { countWaitingReturn++; statusBreakdown['รอการส่งคืน']++; }
+          else if(st.includes('รอตรวจสอบการคืน')) { countPending++; statusBreakdown['รอตรวจสอบการคืน']++; }
+          else if(st.includes('คืนสำเร็จ') || st.includes('เสร็จสิ้น')) { countReturned++; statusBreakdown['เสร็จสิ้น/คืนสำเร็จ']++; }
+          else if(st.includes('ไม่อนุมัติ')) { statusBreakdown['ไม่อนุมัติ']++; }
+          else { statusBreakdown['รอตรวจสอบ']++; }
+        });
+
+        document.getElementById('kpi-total').innerText = total;
+        document.getElementById('kpi-pending').innerText = countPending;
+        document.getElementById('kpi-approved').innerText = countApproved; 
+        document.getElementById('kpi-waiting-return').innerText = countWaitingReturn;
+        document.getElementById('kpi-returned').innerText = countReturned;
+        document.getElementById('total-req-badge').innerText = `${total} รายการ`;
+
+        let barsContainer = document.getElementById('status-bars-container');
+        if(barsContainer) {
+            barsContainer.innerHTML = '';
+            for(let key in statusBreakdown) {
+                let val = statusBreakdown[key];
+                if(val > 0) {
+                    let pct = Math.round((val / total) * 100);
+                    
+                    let colorClass = '#64748b'; // default
+                    if(key.includes('รอตรวจสอบ') && !key.includes('คืน')) colorClass = '#f59e0b';
+                    if(key.includes('อนุมัติ')) colorClass = '#3b82f6';
+                    if(key.includes('รอการส่งคืน')) colorClass = '#06b6d4';
+                    if(key.includes('เสร็จสิ้น') || key.includes('คืนสำเร็จ')) colorClass = '#10b981';
+                    if(key.includes('ไม่อนุมัติ')) colorClass = '#ef4444';
+
+                    barsContainer.innerHTML += `
+                    <div class="bar-row">
+                        <div class="bar-label">${key}</div>
+                        <div class="bar-track">
+                            <div class="bar-fill" style="width: ${pct}%; background-color: ${colorClass};"></div>
+                        </div>
+                        <div class="bar-value">${val} <span class="fw-normal text-muted small ms-1">(${pct}%)</span></div>
+                    </div>`;
+                }
+            }
+            if(total === 0) barsContainer.innerHTML = '<div class="text-start py-3 text-muted small">ยังไม่มีข้อมูลคำขอในระบบ</div>';
+        }
+
+        let statusContainer = document.getElementById('request-tracking-list');
+        let adminTbody = document.getElementById('admin-tbody');
+        if(!statusContainer) return;
+        statusContainer.innerHTML = '';
+        if(adminTbody) adminTbody.innerHTML = '';
+
+        if(total === 0) {
+          statusContainer.innerHTML = '<div class="text-center py-5 text-muted">ยังไม่มีรายการขอยืมพัสดุในระบบ</div>';
+          if(adminTbody) adminTbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">ไม่มีคำขอยืม</td></tr>';
+          return;
+        }
+
+        allBorrowRecords.slice().reverse().forEach((row, index) => {
+          let originalIndex = allBorrowRecords.length - 1 - index;
+          
+          let borrowId = row[0]; let userName = row[2]; let department = row[3];
+          let itemsBorrowed = row[8];
+          let statusText = row[10];
+          let statusBadge = getStatusBadge(statusText);
+          let shortItems = itemsBorrowed ? itemsBorrowed.split('\n')[0] : '-';
+
+          let actionBtnHtml = '';
+          if (statusText === 'อนุมัติ (มารับพัสดุได้เลย)') {
+             actionBtnHtml = `<button class="btn btn-sm btn-outline-success rounded-pill px-3 mt-2 mt-md-0 fw-bold" onclick="event.stopPropagation(); promptPickupSignature('${borrowId}')">เซ็นรับพัสดุ</button>`;
+          } else if (statusText === 'รอการส่งคืน' && itemsBorrowed.includes('[ต้องคืน]')) {
+             actionBtnHtml = `<button class="btn btn-sm btn-outline-primary rounded-pill px-3 mt-2 mt-md-0 fw-bold" onclick="event.stopPropagation(); promptReturnProof(${originalIndex})">แจ้งคืน</button>`;
+          }
+
+          statusContainer.innerHTML += `
+            <div class="tracking-item" onclick="viewDetail(${originalIndex})">
+              <div class="d-flex flex-column flex-md-row gap-2 gap-md-4 w-100 align-items-start align-items-md-center">
+                 <div style="min-width: 200px;">
+                    <span class="fw-bold fs-6 text-dark">${borrowId}</span><br>
+                    <small class="text-muted">${userName} (${department})</small>
+                 </div>
+                 <div class="flex-grow-1 text-truncate" style="max-width: 100%;">
+                    <small class="text-secondary d-block text-truncate bg-light px-2 py-1 rounded">${shortItems}</small>
+                 </div>
+                 <div class="d-flex align-items-center justify-content-between justify-content-md-end gap-3 w-100 w-md-auto mt-2 mt-md-0">
+                    ${actionBtnHtml}
+                    ${statusBadge}
+                 </div>
+              </div>
+            </div>
+          `;
+
+          if(adminTbody) {
+            const manualStatuses = [
+              { v: 'รอตรวจสอบ', t: 'รอตรวจสอบ' },
+              { v: 'อนุมัติ (มารับพัสดุได้เลย)', t: 'อนุมัติ (ให้ผู้ยืมเซ็นรับ)' },
+              { v: 'คืนสำเร็จ', t: 'คืนสำเร็จ (ตรวจสอบแล้ว)' },
+              { v: 'ไม่อนุมัติ', t: 'ไม่อนุมัติ' }
+            ];
+
+            let statOptionsHtml = `<select class="form-select form-select-sm bg-light text-secondary border" onchange="updateStatus('${borrowId}', this.value)">`;
+            let isCurrentManual = manualStatuses.some(s => s.v === statusText);
+            
+            if (!isCurrentManual && statusText !== '') {
+              statOptionsHtml += `<option value="${statusText}" selected>${statusText}</option>`;
+            }
+            manualStatuses.forEach(s => {
+              let isSel = (statusText === s.v) ? 'selected' : '';
+              statOptionsHtml += `<option value="${s.v}" ${isSel}>${s.t}</option>`;
+            });
+            statOptionsHtml += `</select>`;
+
+            adminTbody.innerHTML += `
+              <tr>
+                <td class="ps-4"><span class="badge bg-light text-dark border mb-1">${borrowId}</span><br><strong class="text-dark small">${userName}</strong><br><small class="text-muted" style="font-size:0.75rem;">${department}</small></td>
+                <td><div class="bg-light p-2 rounded text-secondary" style="font-size:0.8rem; white-space: pre-line; max-height: 80px; overflow-y:auto;">${itemsBorrowed}</div></td>
+                <td style="width: 180px;">${statOptionsHtml}</td>
+                <td class="pe-4 text-end" style="width: 120px;">
+                  <button class="btn btn-sm btn-outline-secondary rounded-circle me-1" onclick="viewDetail(${originalIndex})" title="ดูข้อมูล"><i class="bi bi-search"></i></button>
+                  <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="deleteReq('${borrowId}')" title="ลบข้อมูล"><i class="bi bi-trash"></i></button>
+                </td>
+              </tr>
+            `;
+          }
+        });
+      }
+
+      function viewDetail(idx) {
+        let r = allBorrowRecords[idx];
+        if(!r) return;
+        let sigHtml = r[11] ? `<div class="mt-3 pt-3 border-top"><p class="fw-bold mb-1 text-secondary small">ลายเซ็นตอนขอยืม:</p><div class="bg-light p-2 rounded border text-center"><img src="${r[11]}" style="max-width: 100%; height: auto;"></div></div>` : '';
+        let pickupSigHtml = r[13] ? `<div class="mt-3 pt-3 border-top"><p class="fw-bold mb-1 text-success small">ลายเซ็นรับพัสดุ:</p><div class="bg-light p-2 rounded border text-center"><img src="${r[13]}" style="max-width: 100%; height: auto;"></div></div>` : '';
+        let returnImgHtml = r[12] ? `<div class="mt-3 pt-3 border-top"><p class="fw-bold mb-1 text-info small">หลักฐานรูปถ่ายการคืน:</p><div class="bg-light p-2 rounded border text-center"><img src="${r[12]}" style="max-width: 100%; height: auto;"></div></div>` : '';
+        
+        Swal.fire({
+          title: `<span class="fs-5 fw-bold text-dark">รายละเอียดคำขอ</span>`,
+          html: `
+            <div class="text-start" style="font-size: 0.9rem;">
+              <div class="bg-light p-3 rounded mb-3 border">
+                <div class="row mb-1"><div class="col-4 text-muted">รหัสคำขอ</div><div class="col-8 fw-bold">${r[0]}</div></div>
+                <div class="row mb-1"><div class="col-4 text-muted">ผู้ยืม</div><div class="col-8 fw-bold">${r[2]} <small class="text-muted fw-normal">(${r[3]})</small></div></div>
+                <div class="row mb-1"><div class="col-4 text-muted">วันที่ใช้งาน</div><div class="col-8 fw-bold">${r[5]}</div></div>
+                <div class="row mb-1"><div class="col-4 text-muted">โครงการ</div><div class="col-8">${r[9] || '-'}</div></div>
+                <div class="row"><div class="col-4 text-muted">สถานะ</div><div class="col-8">${getStatusBadge(r[10])}</div></div>
+              </div>
+              <p class="fw-bold text-dark mb-1">รายการพัสดุที่ขอยืม:</p>
+              <div class="bg-light p-2 rounded border text-secondary" style="white-space: pre-line;">${r[8]}</div>
+              ${sigHtml} ${pickupSigHtml} ${returnImgHtml}
+            </div>
+          `,
+          confirmButtonText: 'ปิดหน้าต่าง',
+          confirmButtonColor: '#1e293b'
+        });
+      }
+
+      function getStatusBadge(status) {
+        if(!status) return `<span class="badge-soft-secondary">ไม่ระบุ</span>`;
+        if(status.includes('รอตรวจสอบ') || status.includes('รออนุมัติ')) return `<span class="badge-soft-warning">${status}</span>`;
+        if(status.includes('อนุมัติ')) return `<span class="badge-soft-info">${status}</span>`;
+        if(status.includes('รอการส่งคืน') || status.includes('รอคืน')) return `<span class="badge-soft-primary">${status}</span>`;
+        if(status.includes('รอตรวจสอบการคืน')) return `<span class="badge-soft-warning">${status}</span>`;
+        if(status.includes('คืนสำเร็จ') || status.includes('เสร็จสิ้น')) return `<span class="badge-soft-success">${status}</span>`;
+        if(status.includes('ไม่อนุมัติ')) return `<span class="badge-soft-danger">${status}</span>`;
+        return `<span class="badge-soft-secondary">${status}</span>`;
+      }
+
+      function promptPickupSignature(borrowId) {
+        let pickupPad;
+        Swal.fire({
+          title: 'ยืนยันการรับพัสดุ',
+          html: `
+            <div class="text-center small mb-3 text-muted">กรุณาเซ็นชื่อเพื่อยืนยันว่าคุณได้รับพัสดุเรียบร้อยแล้วด้วยตนเอง</div>
+            <div class="shadow-sm" style="border: 1px dashed #cbd5e1; border-radius: 8px; background: #fff; display: inline-block; width: 100%; touch-action: none; overflow:hidden;">
+              <canvas id="pickupCanvas" style="width: 100%; height: 180px; cursor: crosshair; touch-action: none;"></canvas>
+            </div>
+            <div class="mt-2 text-end">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="if(pickupPad) pickupPad.clear()">ล้างลายเซ็น</button>
+            </div>
+          `,
+          showCancelButton: true,
+          confirmButtonText: 'ยืนยันการรับ',
+          cancelButtonText: 'ยกเลิก',
+          confirmButtonColor: '#10b981',
+          cancelButtonColor: '#64748b',
+          didOpen: () => {
+            const canvas = document.getElementById('pickupCanvas');
+            const ratio = Math.max(window.devicePixelRatio || 1, 1);
+            canvas.width = canvas.offsetWidth * ratio;
+            canvas.height = canvas.offsetHeight * ratio;
+            canvas.getContext("2d").scale(ratio, ratio);
+            pickupPad = new SignaturePad(canvas, { backgroundColor: 'rgba(255, 255, 255, 0)' });
+          },
+          preConfirm: () => {
+            if (!pickupPad || pickupPad.isEmpty()) {
+              Swal.showValidationMessage('กรุณาเซ็นชื่อยืนยันการรับพัสดุก่อนกดตกลง');
+              return false;
+            }
+            return pickupPad.toDataURL('image/png');
+          }
+        }).then((result) => {
+          if (result.isConfirmed) {
+            Swal.fire({title: 'กำลังบันทึกข้อมูล...', allowOutsideClick: false, didOpen:()=>{Swal.showLoading()}});
+            google.script.run.withSuccessHandler(res => {
+              if(res.success) { Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'ยืนยันการรับพัสดุเรียบร้อย', confirmButtonColor: '#10b981' }); loadAllData(); }
+              else { Swal.fire('ผิดพลาด', res.message, 'error'); }
+            }).confirmPickup(borrowId, result.value);
+          }
+        });
+      }
+
+      // ตรวจรหัสแอดมินที่เซิร์ฟเวอร์ (ไม่เก็บรหัสไว้ในหน้าเว็บ)
+      function checkAdminLogin() {
+        const pw = document.getElementById('adminPasswordInput').value;
+        window.ADMIN_KEY = pw;
+        google.script.run.withSuccessHandler(function(valid) {
+          if (valid) {
+            document.getElementById('admin-login-box').classList.add('d-none');
+            document.getElementById('admin-panel-box').classList.remove('d-none');
+            Swal.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ', timer: 1000, showConfirmButton: false });
+          } else {
+            window.ADMIN_KEY = '';
+            Swal.fire({ icon: 'error', title: 'รหัสผ่านไม่ถูกต้อง', confirmButtonColor: '#1e293b' });
+          }
+        }).withFailureHandler(function() {
+          window.ADMIN_KEY = '';
+          Swal.fire({ icon: 'error', title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้', confirmButtonColor: '#1e293b' });
+        }).verifyAdmin();
+      }
+
+      function logoutAdmin() {
+        window.ADMIN_KEY = '';
+        document.getElementById('adminPasswordInput').value = '';
+        document.getElementById('admin-login-box').classList.remove('d-none');
+        document.getElementById('admin-panel-box').classList.add('d-none');
+      }
+
+      function handleBorrowSubmit(e) {
+        e.preventDefault();
+        let btn = document.getElementById('btn-submit');
+        let selectedItems = [];
+        document.querySelectorAll('.chk-item:checked').forEach(chk => {
+          let index = chk.value; let qty = document.getElementById(`qty-${index}`) ? document.getElementById(`qty-${index}`).value : 0;
+          if(qty > 0 && stocksList[index]) selectedItems.push({ 
+            code: stocksList[index][0], 
+            name: stocksList[index][1], 
+            sheet: stocksList[index][6], 
+            qty: qty, 
+            needReturn: stocksList[index][4],
+            location: stocksList[index][7] || 'ม.รังสิต'
+          });
+        });
+        if(selectedItems.length === 0) { Swal.fire({ icon: 'warning', title: 'โปรดเลือกพัสดุ', text: 'กรุณาเลือกรายการที่ต้องการยืมอย่างน้อย 1 รายการ', confirmButtonColor: '#f59e0b' }); return; }
+        
+        let signatureData = signaturePad && !signaturePad.isEmpty() ? signaturePad.toDataURL('image/png') : "";
+        if(btn) { btn.disabled = true; btn.innerHTML = 'กำลังส่งคำขอ...'; }
+
+        let formData = {
+          name: document.getElementById('b-name').value, department: document.getElementById('b-department').value,
+          email: document.getElementById('b-email').value, useDate: document.getElementById('b-date').value,
+          notes: document.getElementById('b-notes').value, items: selectedItems, signature: signatureData
+        };
+
+        google.script.run.withSuccessHandler(function(res) {
+            Swal.fire({ icon: 'success', title: 'ส่งคำขอสำเร็จ!', text: res.message, confirmButtonColor: '#10b981' });
+            document.getElementById('borrowForm').reset();
+            if(signaturePad) signaturePad.clear();
+            document.querySelectorAll('.qty-input').forEach(input => input.disabled = true);
+            if(btn) { btn.disabled = false; btn.innerHTML = 'ยืนยันส่งคำขอยืมพัสดุ'; }
+            loadAllData(); showPage('status');
+        }).withFailureHandler(function(err) {
+            if(btn) { btn.disabled = false; btn.innerHTML = 'ยืนยันส่งคำขอยืมพัสดุ'; }
+            Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: err.message, confirmButtonColor: '#1e293b' });
+        }).submitBorrowRequest(formData);
+      }
+
+      function updateStatus(borrowId, newStatus) {
+        Swal.fire({ title: 'กำลังอัปเดตสถานะ...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        google.script.run.withSuccessHandler(res => {
+            if(res.success) { Swal.fire({ icon: 'success', title: 'อัปเดตสำเร็จ', timer: 1000, showConfirmButton: false }); loadAllData(); } 
+            else Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: res.message, confirmButtonColor: '#1e293b' });
+        }).updateBorrowStatus(borrowId, newStatus);
+      }
+
+      function deleteReq(borrowId) {
+        Swal.fire({
+          title: 'ยืนยันการลบ?',
+          text: `คุณต้องการลบคำขอ ${borrowId} ใช่หรือไม่? ข้อมูลประวัติในคลังจะถูกลบไปด้วย`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#ef4444',
+          cancelButtonColor: '#64748b',
+          confirmButtonText: 'ใช่, ลบเลย!',
+          cancelButtonText: 'ยกเลิก'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            Swal.fire({ title: 'กำลังลบข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            google.script.run.withSuccessHandler(res => {
+                if(res.success) { Swal.fire({ icon: 'success', title: 'ลบสำเร็จ', timer: 1000, showConfirmButton: false }); loadAllData(); } 
+                else Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: res.message, confirmButtonColor: '#1e293b' });
+            }).deleteBorrowRequest(borrowId);
+          }
+        });
+      }
+
+      function promptReturnProof(idx) {
+        let r = allBorrowRecords[idx];
+        let itemsSummary = r[8];
+        let lines = itemsSummary.split('\n');
+        
+        let inputsHtml = `<div class="text-start mb-3"><div class="small text-muted mb-2">ระบุจำนวนที่ส่งคืนในรอบนี้ (ใส่ 0 หากยังไม่คืนรายการนั้น)</div>`;
+        
+        lines.forEach((line, i) => {
+          let match = line.match(/- \[(.*?)\] (.*?) \(สถานที่: (.*?)\) \(รหัส: (.*?)\) \(จำนวน: (\d+)\)/) || line.match(/- \[(.*?)\] (.*?) \(รหัส: (.*?)\) \(จำนวน: (\d+)\)/);
+          if(!match) return;
+          let needReturn = line.includes('[ต้องคืน]');
+          if(needReturn) {
+             let itemName = match[2];
+             let itemCode = match.length > 5 ? match[4] : match[3];
+             let maxQty = match.length > 5 ? match[5] : match[4];
+             inputsHtml += `
+               <div class="d-flex align-items-center mb-2 p-2 bg-light rounded border">
+                 <div class="flex-grow-1 text-truncate small text-dark pe-2"><span class="badge bg-secondary me-1">${itemCode}</span>${itemName} (ยืม ${maxQty})</div>
+                 <div style="width: 80px;"><input type="number" id="ret-qty-${i}" class="form-control form-control-sm text-center border-0 shadow-sm" min="0" max="${maxQty}" value="${maxQty}"></div>
+               </div>
+             `;
+          } else {
+             inputsHtml += `<input type="hidden" id="ret-qty-${i}" value="0">`;
+          }
+        });
+        
+        inputsHtml += `</div>
+          <div class="text-start fw-bold mb-2 text-dark small">แนบรูปหลักฐานการคืน</div>
+          <input type="file" id="return-img-input" class="form-control p-2 bg-light border-0 shadow-sm" accept="image/*">
+        `;
+
+        Swal.fire({
+          title: 'แจ้งคืนพัสดุ',
+          html: inputsHtml,
+          showCancelButton: true, 
+          confirmButtonText: 'ยืนยันส่งคืน', 
+          cancelButtonText: 'ยกเลิก', 
+          confirmButtonColor: '#3b82f6',
+          cancelButtonColor: '#64748b',
+          preConfirm: () => {
+            const fileInput = document.getElementById('return-img-input');
+            if (!fileInput.files.length) { Swal.showValidationMessage('กรุณาเลือกไฟล์รูปภาพเพื่อใช้เป็นหลักฐาน'); return false; }
+            
+            let returnedQtys = [];
+            for(let i=0; i<lines.length; i++) {
+               let el = document.getElementById(`ret-qty-${i}`);
+               returnedQtys.push(el ? el.value : 0);
+            }
+            return { file: fileInput.files[0], qtys: returnedQtys };
+          }
+        }).then((result) => {
+          if (result.isConfirmed) {
+            const file = result.value.file; 
+            const qtys = result.value.qtys;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              let img = new Image();
+              img.onload = function() {
+                let canvas = document.createElement('canvas'); let max_size = 600; let width = img.width; let height = img.height;
+                if (width > height && width > max_size) { height *= max_size / width; width = max_size; } else if (height > max_size) { width *= max_size / height; height = max_size; }
+                canvas.width = width; canvas.height = height;
+                let ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
+                let base64 = canvas.toDataURL('image/jpeg', 0.7); 
+                
+                Swal.fire({title: 'กำลังอัปโหลดข้อมูล...', allowOutsideClick: false, didOpen:()=>{Swal.showLoading()}});
+                google.script.run.withSuccessHandler(res => {
+                  if(res.success) { Swal.fire({ icon: 'success', title: 'แจ้งคืนสำเร็จ!', text: 'อัปเดตสต๊อกและส่งรูปภาพรอแอดมินตรวจสอบแล้ว', confirmButtonColor: '#10b981' }); loadAllData(); } 
+                  else Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: res.message, confirmButtonColor: '#1e293b' });
+                }).submitReturnProof(r[0], base64, qtys);
+              }; img.src = e.target.result;
+            }; reader.readAsDataURL(file);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
