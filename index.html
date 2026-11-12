@@ -14,7 +14,7 @@
 
     <!-- ⚠️ แก้ API_URL เป็น URL /exec ของ Apps Script ที่ Deploy แล้ว -->
     <script>
-      const API_URL = 'https://script.google.com/macros/s/AKfycbyS8VKeZ9-H0uShq0BiPg_XpQDkuCPjczXrcthh40u6rlwstkUAEeJlLykZlClsORdvMQ/exec';
+      const API_URL = 'https://script.google.com/macros/u/1/s/AKfycbyS8VKeZ9-H0uShq0BiPg_XpQDkuCPjczXrcthh40u6rlwstkUAEeJlLykZlClsORdvMQ/exec';
       window.ADMIN_KEY = '';
 
       // เลียนแบบ google.script.run เดิม เพื่อไม่ต้องแก้โค้ดที่เรียกใช้ทีละจุด
@@ -185,6 +185,12 @@
       /* Tables */
       .flat-table th { background-color: #f8fafc; color: var(--text-muted); font-weight: 600; border-bottom: 2px solid var(--border-color); }
       .flat-table td { vertical-align: middle; border-bottom: 1px solid var(--border-color); }
+      .flat-table th { white-space: nowrap; font-size: 0.85rem; padding-top: 14px; padding-bottom: 14px; }
+      .flat-table td { font-size: 0.9rem; }
+      .flat-table .badge, .flat-table [class*="badge-soft"] { white-space: nowrap; }
+      .flat-table .col-code { width: 110px; white-space: nowrap; }
+      .flat-table .col-name { min-width: 260px; }
+      .flat-table .col-center { text-align: center; }
       
       /* Tabs */
       .sub-tab-btn { background: #fff; border: 1px solid #cbd5e1; color: var(--text-muted); font-weight: 500; padding: 6px 16px; border-radius: 20px; transition: all 0.2s; }
@@ -378,12 +384,12 @@
             <table class="table flat-table align-middle mb-0">
               <thead>
                 <tr>
-                  <th class="ps-4">รหัสพัสดุ</th>
-                  <th>ชื่อรายการ</th>
+                  <th class="ps-4 col-code">รหัสพัสดุ</th>
+                  <th class="col-name">ชื่อรายการ</th>
                   <th>หมวดหมู่ย่อย</th>
                   <th>สถานที่เก็บ</th>
-                  <th>คงเหลือ</th>
-                  <th class="pe-4">เงื่อนไข</th>
+                  <th class="col-center">คงเหลือ</th>
+                  <th class="pe-4 col-center">เงื่อนไข</th>
                 </tr>
               </thead>
               <tbody id="stocks-tbody">
@@ -671,8 +677,8 @@
               <td class="fw-semibold text-dark">${row[1]}</td>
               <td><span class="badge bg-light text-secondary border">${row[6]}</span></td>
               <td>${locationBadge}</td>
-              <td class="${isOut ? 'text-danger fw-bold' : 'text-success fw-bold'}">${isOut ? 'หมด' : avail}</td>
-              <td class="pe-4">${row[4] == 'Yes' ? '<span class="badge-soft-danger">ต้องคืน</span>' : '<span class="badge-soft-secondary">ไม่ต้องคืน</span>'}</td>
+              <td class="col-center ${isOut ? 'text-danger fw-bold' : 'text-success fw-bold'}">${isOut ? 'หมด' : avail}</td>
+              <td class="pe-4 col-center">${row[4] == 'Yes' ? '<span class="badge-soft-danger">ต้องคืน</span>' : '<span class="badge-soft-secondary">ไม่ต้องคืน</span>'}</td>
             </tr>
           `;
         });
@@ -851,13 +857,81 @@
                 <td class="ps-4"><span class="badge bg-light text-dark border mb-1">${borrowId}</span><br><strong class="text-dark small">${userName}</strong><br><small class="text-muted" style="font-size:0.75rem;">${department}</small></td>
                 <td><div class="bg-light p-2 rounded text-secondary" style="font-size:0.8rem; white-space: pre-line; max-height: 80px; overflow-y:auto;">${itemsBorrowed}</div></td>
                 <td style="width: 180px;">${statOptionsHtml}</td>
-                <td class="pe-4 text-end" style="width: 120px;">
+                <td class="pe-4 text-end text-nowrap" style="width: 160px;">
                   <button class="btn btn-sm btn-outline-secondary rounded-circle me-1" onclick="viewDetail(${originalIndex})" title="ดูข้อมูล"><i class="bi bi-search"></i></button>
+                  <button class="btn btn-sm btn-outline-primary rounded-circle me-1" onclick="editQty(${originalIndex})" title="แก้ไขจำนวน"><i class="bi bi-pencil"></i></button>
                   <button class="btn btn-sm btn-outline-danger rounded-circle" onclick="deleteReq('${borrowId}')" title="ลบข้อมูล"><i class="bi bi-trash"></i></button>
                 </td>
               </tr>
             `;
           }
+        });
+      }
+
+      function editQty(idx) {
+        const r = allBorrowRecords[idx];
+        if (!r) return;
+        const editable = ['รอตรวจสอบ', 'อนุมัติ (มารับพัสดุได้เลย)', 'รอการส่งคืน'];
+        if (!editable.includes(r[10])) {
+          Swal.fire({ icon: 'info', title: 'แก้ไขจำนวนไม่ได้', text: 'แก้ได้เฉพาะคำขอที่ยังไม่มีการส่งคืนหรือปิดงาน', confirmButtonColor: '#1e293b' });
+          return;
+        }
+        const lines = String(r[8]).split('\n');
+        const codeCount = String(r[6]).split(', ').length;
+        const parsed = lines.map(line =>
+          line.match(/^- \[(.*?)\] (.*?) \(สถานที่: .*?\) \(รหัส: (.*?)\) \(จำนวน: (\d+)\)/) ||
+          line.match(/^- \[(.*?)\] (.*?) \(รหัส: (.*?)\) \(จำนวน: (\d+)\)/)
+        );
+        if (parsed.some(m => !m) || lines.length !== codeCount) {
+          Swal.fire({ icon: 'error', title: 'อ่านรายการไม่ได้', text: 'รูปแบบข้อมูลในชีทไม่ตรงกับที่ระบบคาดไว้ กรุณาตรวจสอบชีท Borrowing', confirmButtonColor: '#1e293b' });
+          return;
+        }
+        const oldVals = parsed.map(m => parseInt(m[4], 10));
+        let rowsHtml = '';
+        parsed.forEach((m, i) => {
+          const st = stocksList.find(s => s[0] === m[3] && s[6] === m[1]);
+          const availText = st ? ` · คงเหลือในคลังตอนนี้ ${Number(st[2]) || 0}` : '';
+          rowsHtml += `
+            <div class="d-flex align-items-center mb-2 p-2 bg-light rounded border text-start">
+              <div class="flex-grow-1 small text-dark pe-2">
+                <span class="badge bg-secondary me-1">${m[3]}</span>${m[2]}
+                <div class="text-muted" style="font-size:0.75rem;">จำนวนเดิม ${m[4]}${availText}</div>
+              </div>
+              <div style="width: 80px;"><input type="number" id="edit-qty-${i}" class="form-control form-control-sm text-center" min="1" value="${m[4]}"></div>
+            </div>`;
+        });
+        Swal.fire({
+          title: 'แก้ไขจำนวนที่ขอยืม',
+          html: `<div class="text-start small text-muted mb-2">${r[0]} · ${r[2]}</div>${rowsHtml}
+                 <div class="text-start small text-muted mt-2">ระบบจะแก้จำนวนในชีท Borrowing และประวัติในชีทคลังให้ตรงกัน</div>`,
+          showCancelButton: true,
+          confirmButtonText: 'บันทึกการแก้ไข',
+          cancelButtonText: 'ยกเลิก',
+          confirmButtonColor: '#a11421',
+          cancelButtonColor: '#64748b',
+          preConfirm: () => {
+            const vals = [];
+            for (let i = 0; i < parsed.length; i++) {
+              const v = parseInt(document.getElementById('edit-qty-' + i).value, 10);
+              if (!(v >= 1)) { Swal.showValidationMessage('จำนวนต้องเป็นตัวเลขตั้งแต่ 1 ขึ้นไป'); return false; }
+              vals.push(v);
+            }
+            if (vals.every((v, i) => v === oldVals[i])) { Swal.showValidationMessage('ยังไม่ได้เปลี่ยนจำนวน'); return false; }
+            return vals;
+          }
+        }).then(result => {
+          if (!result.isConfirmed) return;
+          Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+          google.script.run.withSuccessHandler(res => {
+            if (res && res.success) {
+              Swal.fire({ icon: res.warning ? 'warning' : 'success', title: 'แก้ไขจำนวนสำเร็จ', text: res.warning || '', confirmButtonColor: '#10b981' });
+              loadAllData();
+            } else {
+              Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: (res && res.message) || 'บันทึกไม่สำเร็จ', confirmButtonColor: '#1e293b' });
+            }
+          }).withFailureHandler(err => {
+            Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: err.message, confirmButtonColor: '#1e293b' });
+          }).editBorrowQuantities(r[0], result.value);
         });
       }
 
